@@ -1,1 +1,17 @@
-q
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordpress-monitor
+  namespace: wordpress
+  labels:
+    app: wordpress
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+    scrapeTimeout: 10s

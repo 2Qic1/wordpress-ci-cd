@@ -13,8 +13,8 @@ spec:
     repoURL: 'https://github.com/2Qic1/wordpress-ci-cd'
     targetRevision: HEAD
     path: .
-    kustomize:
-      version: v4.5.7
+#    kustomize:
+#      version: v4.5.7
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: wordpress

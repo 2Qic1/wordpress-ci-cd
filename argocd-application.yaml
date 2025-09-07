@@ -1,1 +1,38 @@
-q
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wordpress-production
+  namespace: argocd
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.discord: "true"
+    notifications.argoproj.io/subscribe.on-sync-failed.discord: "true"
+    notifications.argoproj.io/subscribe.on-health-degraded.discord: "true"
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/2Qic1/wordpress-ci-cd'
+    targetRevision: HEAD
+    path: .
+    kustomize:
+      version: v4.5.7
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: wordpress
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 2
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jqPathExpressions:
+    - .spec.replicas

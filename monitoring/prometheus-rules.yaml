@@ -1,1 +1,41 @@
-q
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: wordpress-alerts
+  namespace: wordpress
+  labels:
+    app: wordpress
+    release: prometheus
+spec:
+  groups:
+  - name: wordpress.rules
+    rules:
+    - alert: WordPressDown
+      expr: up{job="wordpress-service"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        app: wordpress
+      annotations:
+        summary: "WordPress is down"
+        description: "WordPress service has been down for more than 5 minutes"
+        
+    - alert: WordPressHighCPU
+      expr: rate(container_cpu_usage_seconds_total{container="wordpress"}[5m]) > 0.8
+      for: 10m
+      labels:
+        severity: warning
+        app: wordpress
+      annotations:
+        summary: "WordPress high CPU usage"
+        description: "CPU usage for WordPress is over 80% for 10 minutes"
+        
+    - alert: WordPressHighMemory
+      expr: container_memory_working_set_bytes{container="wordpress"} > 150Mi
+      for: 10m
+      labels:
+        severity: warning
+        app: wordpress
+      annotations:
+        summary: "WordPress high memory usage"
+        description: "Memory usage for WordPress is over 150MB for 10 minutes"

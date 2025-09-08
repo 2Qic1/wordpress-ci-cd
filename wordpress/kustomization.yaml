@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- templates/deployment.yaml
+- templates/service.yaml
+- templates/ingress.yaml
+- templates/configmap.yaml
+- templates/mysql.yaml
+- templates/secret.yaml
+
+configMapGenerator:
+- name: wordpress-config
+  behavior: merge
+  literals:
+  - app-version=v1

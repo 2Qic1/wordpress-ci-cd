@@ -1,0 +1,56 @@
+name: WordPress CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Validate Kubernetes manifests
+      run: |
+        find . -name "*.yaml" -o -name "*.yml" | xargs -I {} sh -c 'echo "Validating {}" && kubectl apply -f {} --dry-run=client || exit 1'
+        
+    - name: Check YAML syntax
+      uses: actions-hub/yamllint@master
+      with:
+        file_or_dir: .
+        config_file: .yamllint.yml
+        
+    - name: Test Discord webhook
+      run: |
+        python3 discord/webhook.py test
+        
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Start deployment notification
+      run: |
+        echo "DEPLOYMENT_START=$(date +%s)" >> $GITHUB_ENV
+        python3 discord/webhook.py start $DEPLOYMENT_START
+        
+    - name: Setup Kubernetes
+      uses: azure/setup-kubectl@v1
+      
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f wordpress/templates/secret.yaml
+        kubectl apply -f wordpress/templates/
+        
+    - name: Success notification
+      run: |
+        python3 discord/webhook.py success $DEPLOYMENT_START
+        
+    - name: Failure notification
+      if: failure()
+      run: |
+        python3 discord/webhook.py fail $DEPLOYMENT_START

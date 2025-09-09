@@ -1,0 +1,115 @@
+name: Check Required Keys
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+env:
+  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+jobs:
+  check-keys:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start check
+        run: |
+          echo "CHECK_START=$(date +%s)" >> $GITHUB_ENV
+          echo "MISSING_KEYS=0" >> $GITHUB_ENV
+          echo "FILES_CHECKED=0" >> $GITHUB_ENV
+
+      - name: Check for required keys
+        run: |
+          echo "🔍 Checking for required keys in YAML files..."
+          
+          # Проверяем deployment файлы
+          for file in $(find . -name "*deployment*.yaml" -o -name "*deployment*.yml"); do
+            echo "Checking: $file"
+            ((FILES_CHECKED++))
+            
+            # Проверяем обязательные поля с помощью grep
+            REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:" "containers:")
+            for field in "${REQUIRED_FIELDS[@]}"; do
+              if ! grep -q "$field" "$file"; then
+                echo "❌ Missing required field: $field in $file"
+                ((MISSING_KEYS++))
+              fi
+            done
+          done
+          
+          # Проверяем service файлы
+          for file in $(find . -name "*service*.yaml" -o -name "*service*.yml"); do
+            echo "Checking: $file"
+            ((FILES_CHECKED++))
+            
+            REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:" "ports:")
+            for field in "${REQUIRED_FIELDS[@]}"; do
+              if ! grep -q "$field" "$file"; then
+                echo "❌ Missing required field: $field in $file"
+                ((MISSING_KEYS++))
+              fi
+            done
+          done
+          
+          echo "MISSING_KEYS=$MISSING_KEYS" >> $GITHUB_ENV
+          echo "FILES_CHECKED=$FILES_CHECKED" >> $GITHUB_ENV
+
+      - name: Calculate check time
+        run: |
+          CHECK_END=$(date +%s)
+          CHECK_TIME=$((CHECK_END - ${{ env.CHECK_START }}))
+          
+          if [ $CHECK_TIME -lt 60 ]; then
+            TIME_READABLE="${CHECK_TIME} seconds"
+          else
+            MINUTES=$((CHECK_TIME / 60))
+            SECONDS=$((CHECK_TIME % 60))
+            TIME_READABLE="${MINUTES}m ${SECONDS}s"
+          fi
+          echo "TIME_READABLE=$TIME_READABLE" >> $GITHUB_ENV
+
+      - name: Prepare results
+        run: |
+          if [ ${{ env.MISSING_KEYS }} -eq 0 ]; then
+            TITLE="✅ **All Required Keys Found!**"
+            COLOR="5814783"
+            STATUS="🟢 Success"
+          else
+            TITLE="❌ **Missing Required Keys!**"
+            COLOR="16711680"
+            STATUS="🔴 Found ${{ env.MISSING_KEYS }} missing keys"
+          fi
+          
+          echo "TITLE=$TITLE" >> $GITHUB_ENV
+          echo "COLOR=$COLOR" >> $GITHUB_ENV
+          echo "STATUS=$STATUS" >> $GITHUB_ENV
+
+      - name: Send results to Discord
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: |
+            ${{ env.TITLE }}
+            📦 Repository: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            📝 Commit: ${{ github.sha }}
+            📊 Files Checked: ${{ env.FILES_CHECKED }}
+            ❌ Missing Keys: ${{ env.MISSING_KEYS }}
+            ⏱️ Time: ${{ env.TIME_READABLE }}
+            📋 Status: ${{ env.STATUS }}
+            
+            🔍 Check completed at: $(date +"%Y-%m-%d %H:%M:%S")
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Show final results
+        run: |
+          echo "=== KEY CHECK RESULTS ==="
+          echo "Files Checked: ${{ env.FILES_CHECKED }}"
+          echo "Missing Keys: ${{ env.MISSING_KEYS }}"
+          echo "Check Time: ${{ env.TIME_READABLE }}"
+          echo "Status: ${{ env.STATUS }}"
+          echo "========================="

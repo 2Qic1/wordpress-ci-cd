@@ -1,0 +1,160 @@
+name: Validate Kubernetes Manifests
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+env:
+  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+jobs:
+  validate-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        id: setup
+        run: |
+          echo "VALIDATION_START=$(date +%s)" >> $GITHUB_ENV
+          echo "REPO_URL=https://github.com/${{ github.repository }}" >> $GITHUB_ENV
+          echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Install yamllint
+        run: |
+          pip install yamllint
+          yamllint --version
+
+      - name: Install kubeval
+        run: |
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo mv kubeval /usr/local/bin
+          kubeval --version
+
+      - name: Validate YAML syntax
+        id: yaml_validation
+        run: |
+          echo "🔍 Validating YAML syntax..."
+          ERROR_COUNT=0
+          WARNING_COUNT=0
+          
+          # Проверяем все YAML файлы
+          for file in $(find . -name "*.yaml" -o -name "*.yml"); do
+            echo "Checking $file"
+            if ! yamllint "$file" --no-warnings; then
+              echo "❌ YAML error in $file"
+              ((ERROR_COUNT++))
+            fi
+          done
+          
+          echo "ERROR_COUNT=$ERROR_COUNT" >> $GITHUB_ENV
+          echo "YAML_FILES_CHECKED=$(find . -name "*.yaml" -o -name "*.yml" | wc -l)" >> $GITHUB_ENV
+
+      - name: Validate Kubernetes manifests
+        id: kube_validation
+        run: |
+          echo "🔍 Validating Kubernetes manifests..."
+          KUBE_ERRORS=0
+          KUBE_WARNINGS=0
+          MANIFEST_FILES=0
+          
+          # Проверяем Kubernetes манифесты
+          for file in $(find . -name "*.yaml" -o -name "*.yml"); do
+            if grep -q "apiVersion:" "$file" && grep -q "kind:" "$file"; then
+              echo "Validating Kubernetes manifest: $file"
+              ((MANIFEST_FILES++))
+              
+              if ! kubeval "$file" --strict --ignore-missing-schemas; then
+                echo "❌ Kubernetes validation failed for $file"
+                ((KUBE_ERRORS++))
+              fi
+            fi
+          done
+          
+          echo "KUBE_ERRORS=$KUBE_ERRORS" >> $GITHUB_ENV
+          echo "MANIFEST_FILES=$MANIFEST_FILES" >> $GITHUB_ENV
+
+      - name: Check for required keys
+        id: key_check
+        run: |
+          echo "🔑 Checking for required keys..."
+          MISSING_KEYS=0
+          
+          # Проверяем обязательные поля в deployment
+          for file in $(find . -name "*deployment*.yaml" -o -name "*deployment*.yml"); do
+            echo "Checking required keys in: $file"
+            
+            # Проверяем наличие обязательных полей
+            REQUIRED_FIELDS=("apiVersion" "kind" "metadata.name" "spec.template.spec.containers")
+            for field in "${REQUIRED_FIELDS[@]}"; do
+              if ! yq eval ".$field" "$file" > /dev/null 2>&1; then
+                echo "❌ Missing required field: $field in $file"
+                ((MISSING_KEYS++))
+              fi
+            done
+            
+            # Проверяем наличие образа в контейнерах
+            if ! yq eval '.spec.template.spec.containers[].image' "$file" > /dev/null 2>&1; then
+              echo "❌ Missing container image in $file"
+              ((MISSING_KEYS++))
+            fi
+          done
+          
+          echo "MISSING_KEYS=$MISSING_KEYS" >> $GITHUB_ENV
+
+      - name: Calculate validation time
+        run: |
+          VALIDATION_END=$(date +%s)
+          VALIDATION_TIME=$((VALIDATION_END - ${{ env.VALIDATION_START }}))
+          echo "VALIDATION_TIME=$VALIDATION_TIME" >> $GITHUB_ENV
+          
+          if [ $VALIDATION_TIME -lt 60 ]; then
+            TIME_READABLE="${VALIDATION_TIME} seconds"
+          else
+            MINUTES=$((VALIDATION_TIME / 60))
+            SECONDS=$((VALIDATION_TIME % 60))
+            TIME_READABLE="${MINUTES}m ${SECONDS}s"
+          fi
+          echo "TIME_READABLE=$TIME_READABLE" >> $GITHUB_ENV
+
+      - name: Send validation results to Discord
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: |
+            {
+              "content": "${{ env.ERROR_COUNT + env.KUBE_ERRORS + env.MISSING_KEYS == 0 && '✅ **Validation Successful!**' || '❌ **Validation Failed!**' }}",
+              "embeds": [
+                {
+                  "title": "Kubernetes Manifest Validation",
+                  "color": ${{ env.ERROR_COUNT + env.KUBE_ERRORS + env.MISSING_KEYS == 0 && '5814783' || '16711680' }},
+                  "fields": [
+                    {"name": "Repository", "value": "${{ github.repository }}", "inline": true},
+                    {"name": "Branch", "value": "${{ env.BRANCH }}", "inline": true},
+                    {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
+                    {"name": "YAML Files Checked", "value": "${{ env.YAML_FILES_CHECKED }}", "inline": true},
+                    {"name": "K8s Manifests Checked", "value": "${{ env.MANIFEST_FILES }}", "inline": true},
+                    {"name": "YAML Syntax Errors", "value": "${{ env.ERROR_COUNT }}", "inline": true},
+                    {"name": "K8s Validation Errors", "value": "${{ env.KUBE_ERRORS }}", "inline": true},
+                    {"name": "Missing Required Keys", "value": "${{ env.MISSING_KEYS }}", "inline": true},
+                    {"name": "Validation Time", "value": "${{ env.TIME_READABLE }}", "inline": true},
+                    {"name": "Status", "value": "${{ env.ERROR_COUNT + env.KUBE_ERRORS + env.MISSING_KEYS == 0 && '🟢 All checks passed' || '🔴 Validation failed' }}", "inline": true}
+                  ],
+                  "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+                }
+              ]
+            }
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Fail workflow if validation errors
+        if: env.ERROR_COUNT != 0 || env.KUBE_ERRORS != 0 || env.MISSING_KEYS != 0
+        run: |
+          echo "❌ Validation failed with errors:"
+          echo "YAML errors: ${{ env.ERROR_COUNT }}"
+          echo "Kubernetes errors: ${{ env.KUBE_ERRORS }}"
+          echo "Missing keys: ${{ env.MISSING_KEYS }}"
+          exit 1

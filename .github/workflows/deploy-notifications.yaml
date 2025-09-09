@@ -14,7 +14,13 @@ jobs:
       - name: Checkout code (shallow)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # Только последний коммит
+          fetch-depth: 1
+
+      - name: Get current timestamp
+        id: timestamp
+        run: |
+          echo "CURRENT_TIME=$(date +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_ENV
+          echo "TIMESTAMP_READABLE=$(date +"%Y-%m-%d %H:%M:%S")" >> $GITHUB_ENV
 
       - name: Get commit details
         id: commit_info
@@ -49,6 +55,6 @@ jobs:
             📋 Message: ${{ github.event.head_commit.message }}
             📁 Changed files: ${{ steps.commit_info.outputs.CHANGED_FILES_COUNT }}
             📄 Files: ${{ steps.commit_info.outputs.CHANGED_FILES }}${{ steps.commit_info.outputs.EXTRA_FILES == 'true' && '...' || '' }}
-            🕒 Time: $(date +"%Y-%m-%d %H:%M:%S")
+            🕒 Time: ${{ env.TIMESTAMP_READABLE }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}

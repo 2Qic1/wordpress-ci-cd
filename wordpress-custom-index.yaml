@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-custom-index
+  namespace: wordpress
+data:
+  index.php: |
+    <?php
+    /**
+     * Мой кастомный index.php для WordPress
+     */
+    ?>
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Мой сайт на WordPress</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 800px;
+                margin: 50px auto;
+                padding: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+            }
+            .container {
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+                padding: 40px;
+                border-radius: 20px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            h1 {
+                text-align: center;
+                font-size: 2.5em;
+                margin-bottom: 20px;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            }
+            .feature-list {
+                list-style: none;
+                padding: 0;
+            }
+            .feature-list li {
+                background: rgba(255, 255, 255, 0.2);
+                margin: 10px 0;
+                padding: 15px;
+                border-radius: 10px;
+                border-left: 4px solid #00ff88;
+            }
+            .admin-link {
+                display: block;
+                text-align: center;
+                margin-top: 30px;
+                padding: 15px;
+                background: #00ff88;
+                color: #333;
+                text-decoration: none;
+                border-radius: 10px;
+                font-weight: bold;
+                transition: transform 0.3s ease;
+            }
+            .admin-link:hover {
+                transform: translateY(-2px);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🎉 Добро пожаловать на мой сайт!</h1>
+            <p>Это кастомная страница, созданная через Kubernetes ConfigMap</p>
+            
+            <h2>📊 Информация о системе:</h2>
+            <ul class="feature-list">
+                <li>✅ Дата: <?php echo date('d.m.Y'); ?></li>
+                <li>✅ Время: <?php echo date('H:i:s'); ?></li>
+                <li>✅ Kubernetes: Работает</li>
+                <li>✅ WordPress: Запущен</li>
+                <li>✅ MariaDB: Подключена</li>
+            </ul>
+            
+            <h2>🚀 Технологии проекта:</h2>
+            <ul class="feature-list">
+                <li>Kubernetes Cluster</li>
+                <li>WordPress Container</li>
+                <li>MariaDB Database</li>
+                <li>NFS Storage</li>
+                <li>Nginx Ingress</li>
+                <li>ConfigMap Configuration</li>
+            </ul>
+            
+            <a href="/wp-admin" class="admin-link">⚙️ Перейти в админку WordPress</a>
+        </div>
+    </body>
+    </html>
+    <?php
+    // Прерываем выполнение WordPress
+    exit;

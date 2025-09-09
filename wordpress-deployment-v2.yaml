@@ -5,16 +5,18 @@ metadata:
   namespace: wordpress
   labels:
     app: wordpress
-    version: "v1.0.0"
+    version: "v2.0.0"
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: wordpress
+      version: "v2.0.0"
   template:
     metadata:
       labels:
         app: wordpress
+        version: "v2.0.0"
     spec:
       containers:
       - name: wordpress
@@ -42,6 +44,9 @@ spec:
         volumeMounts:
         - name: wordpress-storage
           mountPath: /var/www/html
+        - name: custom-index
+          mountPath: /var/www/html/index.php
+          subPath: index.php
         resources:
           requests:
             memory: "512Mi"
@@ -53,3 +58,9 @@ spec:
       - name: wordpress-storage
         persistentVolumeClaim:
           claimName: wordpress-pvc
+      - name: custom-index
+        configMap:
+          name: wordpress-custom-index
+          items:
+          - key: index.php
+            path: index.php

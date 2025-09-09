@@ -1,0 +1,174 @@
+name: Deployment Notifications
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      deploy_version:
+        description: 'Which version to deploy'
+        required: true
+        type: choice
+        options:
+          - v1
+          - v2
+        default: 'v1'
+
+env:
+  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+jobs:
+  push-notification:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Send push notification
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: |
+            📌 **Push to Master**
+            📦 Repository: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            👤 Author: ${{ github.actor }}
+            📝 Commit: ${{ github.sha }}
+            📋 Message: ${{ github.event.head_commit.message }}
+            📁 Changed files: ${{ join(github.event.head_commit.modified, ', ') }}
+            🌐 URL: ${{ github.event.head_commit.url }}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+  manual-deployment:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show selected version
+        run: |
+          echo "Selected version: ${{ github.event.inputs.deploy_version }}"
+          echo "DEPLOY_VERSION=${{ github.event.inputs.deploy_version }}" >> $GITHUB_ENV
+
+      - name: Send deployment start notification
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: |
+            🚀 **Manual Deployment Started**
+            📦 Repository: ${{ github.repository }}
+            🎯 Version: ${{ github.event.inputs.deploy_version }}
+            👤 Initiated by: ${{ github.actor }}
+            ⏰ Start time: $(date +"%Y-%m-%d %H:%M:%S")
+            💡 Type: Manual deployment with version selection
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Start deployment timer
+        run: echo "DEPLOY_START=$(date +%s)" >> $GITHUB_ENV
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Starting Kubernetes deployment for version: ${{ github.event.inputs.deploy_version }}"
+          
+          # Базовая инфраструктура (общая для всех версий)
+          kubectl apply -f namespace.yaml
+          kubectl apply -f mariadb-secret.yaml
+          kubectl apply -f mariadb-pvc.yaml
+          kubectl apply -f mariadb-deployment.yaml
+          kubectl apply -f mariadb-service.yaml
+          kubectl apply -f wordpress-pvc.yaml
+          
+          # Деплой выбранной версии WordPress
+          if [ "${{ github.event.inputs.deploy_version }}" == "v2" ]; then
+            echo "Deploying WordPress v2..."
+            kubectl apply -f wordpress-deployment-v2.yaml
+          else
+            echo "Deploying WordPress v1..."
+            kubectl apply -f wordpress-deployment.yaml
+          fi
+          
+          # Общие сервисы
+          kubectl apply -f wordpress-service.yaml
+          kubectl apply -f wordpress-ingress.yaml
+          
+          echo "✅ All manifests applied successfully"
+
+      - name: Wait for deployment completion
+        run: |
+          echo "⏳ Waiting for WordPress to be ready..."
+          kubectl rollout status deployment/wordpress -n wordpress --timeout=300s
+          
+          echo "⏳ Waiting for MariaDB to be ready..."
+          kubectl rollout status deployment/mariadb -n wordpress --timeout=300s
+          
+          echo "✅ All deployments are ready"
+
+      - name: Calculate deployment time
+        run: |
+          DEPLOY_END=$(date +%s)
+          DEPLOY_TIME=$((DEPLOY_END - ${{ env.DEPLOY_START }}))
+          echo "DEPLOYMENT_TIME=$DEPLOY_TIME" >> $GITHUB_ENV
+          
+          # Конвертируем в читаемый формат
+          if [ $DEPLOY_TIME -lt 60 ]; then
+            TIME_READABLE="${DEPLOY_TIME} seconds"
+          else
+            MINUTES=$((DEPLOY_TIME / 60))
+            SECONDS=$((DEPLOY_TIME % 60))
+            TIME_READABLE="${MINUTES}m ${SECONDS}s"
+          fi
+          echo "TIME_READABLE=$TIME_READABLE" >> $GITHUB_ENV
+          echo "⏱️ Deployment completed in: $TIME_READABLE"
+
+      - name: Get deployment status
+        id: deployment_status
+        run: |
+          # Получаем информацию о деплое
+          WP_STATUS=$(kubectl get deployment wordpress -n wordpress -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')
+          DB_STATUS=$(kubectl get deployment mariadb -n wordpress -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')
+          
+          echo "WP_STATUS=$WP_STATUS" >> $GITHUB_ENV
+          echo "DB_STATUS=$DB_STATUS" >> $GITHUB_ENV
+          
+          # Получаем версию из deployment файла
+          if [ "${{ github.event.inputs.deploy_version }}" == "v2" ]; then
+            VERSION_INFO=$(grep "version:" wordpress-deployment-v2.yaml | awk '{print $2}' | tr -d '"' || echo "v2")
+          else
+            VERSION_INFO=$(grep "version:" wordpress-deployment.yaml | awk '{print $2}' | tr -d '"' || echo "v1")
+          fi
+          echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
+
+      - name: Send deployment success notification
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: |
+            ✅ **Manual Deployment Successful!**
+            📦 Repository: ${{ github.repository }}
+            🎯 Selected Version: ${{ github.event.inputs.deploy_version }}
+            📋 Actual Version: ${{ env.VERSION_INFO }}
+            ⏱️ **Deployment Time: ${{ env.TIME_READABLE }}**
+            👤 Deployed by: ${{ github.actor }}
+            📊 Status: All systems operational
+            🟢 WordPress: ${{ env.WP_STATUS }}
+            🟢 MariaDB: ${{ env.DB_STATUS }}
+            🎉 Deployment completed successfully!
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Send deployment failure notification
+        if: failure()
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: |
+            ❌ **Manual Deployment Failed!**
+            📦 Repository: ${{ github.repository }}
+            🎯 Version: ${{ github.event.inputs.deploy_version }}
+            ⏱️ Elapsed Time: ${{ env.TIME_READABLE }}
+            👤 Deployed by: ${{ github.actor }}
+            🔴 Status: Deployment failed
+            ⚠️ Error: Check GitHub Actions logs for details
+            💡 Action required: Please investigate the failure
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}

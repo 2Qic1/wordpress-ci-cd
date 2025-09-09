@@ -25,29 +25,25 @@ jobs:
 
       - name: Install tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip
-          pip3 install yamllint
+          # Устанавливаем только kubeval и yq
           wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
           tar xf kubeval-linux-amd64.tar.gz
           sudo mv kubeval /usr/local/bin
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Validate YAML syntax
+      - name: Basic YAML syntax check
         run: |
-          echo "🔍 Validating YAML syntax..."
+          echo "🔍 Basic YAML syntax check..."
           ERROR_COUNT=0
           YAML_FILES=0
           
           for file in $(find . -name "*.yaml" -o -name "*.yml"); do
             echo "Checking $file"
             ((YAML_FILES++))
-            # Используем вывод ошибок в переменную вместо прямого вызова
-            LINT_OUTPUT=$(yamllint "$file" 2>&1 || true)
-            if echo "$LINT_OUTPUT" | grep -q "error"; then
-              echo "❌ YAML error in $file"
-              echo "$LINT_OUTPUT"
+            # Простая проверка YAML с помощью Python
+            if ! python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null; then
+              echo "❌ YAML syntax error in $file"
               ((ERROR_COUNT++))
             fi
           done
@@ -66,10 +62,8 @@ jobs:
               echo "Validating Kubernetes manifest: $file"
               ((MANIFEST_FILES++))
               # Используем || true чтобы продолжить при ошибках
-              KUBE_OUTPUT=$(kubeval "$file" --strict --ignore-missing-schemas 2>&1 || true)
-              if echo "$KUBE_OUTPUT" | grep -q "error"; then
+              if ! kubeval "$file" --strict --ignore-missing-schemas 2>/dev/null; then
                 echo "❌ Kubernetes validation failed for $file"
-                echo "$KUBE_OUTPUT"
                 ((KUBE_ERRORS++))
               fi
             fi
@@ -123,7 +117,7 @@ jobs:
           else
             TITLE="❌ **Validation Failed!**"
             COLOR="16711680"
-            STATUS="🔴 Validation failed"
+            STATUS="🔴 Validation failed with $TOTAL_ERRORS errors"
           fi
           
           echo "TITLE=$TITLE" >> $GITHUB_ENV

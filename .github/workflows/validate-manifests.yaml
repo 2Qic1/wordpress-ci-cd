@@ -35,6 +35,12 @@ jobs:
           sudo mv kubeval /usr/local/bin
           kubeval --version
 
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
       - name: Validate YAML syntax
         id: yaml_validation
         run: |
@@ -121,16 +127,36 @@ jobs:
           fi
           echo "TIME_READABLE=$TIME_READABLE" >> $GITHUB_ENV
 
+      - name: Prepare validation results
+        id: validation_results
+        run: |
+          TOTAL_ERRORS=$(( ${{ env.ERROR_COUNT }} + ${{ env.KUBE_ERRORS }} + ${{ env.MISSING_KEYS }} ))
+          
+          if [ $TOTAL_ERRORS -eq 0 ]; then
+            TITLE="✅ **Validation Successful!**"
+            COLOR="5814783"  # Green
+            STATUS="🟢 All checks passed"
+          else
+            TITLE="❌ **Validation Failed!**"
+            COLOR="16711680"  # Red
+            STATUS="🔴 Validation failed"
+          fi
+          
+          echo "TITLE=$TITLE" >> $GITHUB_ENV
+          echo "COLOR=$COLOR" >> $GITHUB_ENV
+          echo "STATUS=$STATUS" >> $GITHUB_ENV
+          echo "TOTAL_ERRORS=$TOTAL_ERRORS" >> $GITHUB_ENV
+
       - name: Send validation results to Discord
         uses: Ilshidur/action-discord@0.3.2
         with:
           args: |
             {
-              "content": "${{ env.ERROR_COUNT + env.KUBE_ERRORS + env.MISSING_KEYS == 0 && '✅ **Validation Successful!**' || '❌ **Validation Failed!**' }}",
+              "content": "${{ env.TITLE }}",
               "embeds": [
                 {
                   "title": "Kubernetes Manifest Validation",
-                  "color": ${{ env.ERROR_COUNT + env.KUBE_ERRORS + env.MISSING_KEYS == 0 && '5814783' || '16711680' }},
+                  "color": ${{ env.COLOR }},
                   "fields": [
                     {"name": "Repository", "value": "${{ github.repository }}", "inline": true},
                     {"name": "Branch", "value": "${{ env.BRANCH }}", "inline": true},
@@ -141,7 +167,7 @@ jobs:
                     {"name": "K8s Validation Errors", "value": "${{ env.KUBE_ERRORS }}", "inline": true},
                     {"name": "Missing Required Keys", "value": "${{ env.MISSING_KEYS }}", "inline": true},
                     {"name": "Validation Time", "value": "${{ env.TIME_READABLE }}", "inline": true},
-                    {"name": "Status", "value": "${{ env.ERROR_COUNT + env.KUBE_ERRORS + env.MISSING_KEYS == 0 && '🟢 All checks passed' || '🔴 Validation failed' }}", "inline": true}
+                    {"name": "Status", "value": "${{ env.STATUS }}", "inline": true}
                   ],
                   "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
                 }
@@ -151,9 +177,9 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
       - name: Fail workflow if validation errors
-        if: env.ERROR_COUNT != 0 || env.KUBE_ERRORS != 0 || env.MISSING_KEYS != 0
+        if: env.TOTAL_ERRORS != 0
         run: |
-          echo "❌ Validation failed with errors:"
+          echo "❌ Validation failed with ${{ env.TOTAL_ERRORS }} errors:"
           echo "YAML errors: ${{ env.ERROR_COUNT }}"
           echo "Kubernetes errors: ${{ env.KUBE_ERRORS }}"
           echo "Missing keys: ${{ env.MISSING_KEYS }}"

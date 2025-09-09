@@ -36,9 +36,10 @@ jobs:
             "-----BEGIN PGP PRIVATE KEY BLOCK-----"
           )
           
-          for file in $(find . -type f -not -path "./.git/*"); do
+          # Ищем файлы и проверяем
+          for file in $(find . -type f ! -path "./.git/*"); do
             if [ -f "$file" ]; then
-              ((FILES_CHECKED++))
+              FILES_CHECKED=$((FILES_CHECKED + 1))
               
               for pattern in "${PRIVATE_KEY_PATTERNS[@]}"; do
                 if grep -q "$pattern" "$file" 2>/dev/null; then
@@ -51,6 +52,7 @@ jobs:
           done
           
           echo "PRIVATE_KEYS_FOUND=$PRIVATE_KEYS_FOUND" >> $GITHUB_ENV
+          echo "FILES_CHECKED=$FILES_CHECKED" >> $GITHUB_ENV
 
       - name: Check for public keys
         run: |
@@ -65,7 +67,7 @@ jobs:
             "-----BEGIN PGP PUBLIC KEY BLOCK-----"
           )
           
-          for file in $(find . -type f -not -path "./.git/*"); do
+          for file in $(find . -type f ! -path "./.git/*"); do
             if [ -f "$file" ]; then
               for pattern in "${PUBLIC_KEY_PATTERNS[@]}"; do
                 if grep -q "$pattern" "$file" 2>/dev/null; then
@@ -103,7 +105,7 @@ jobs:
             STATUS="🟢 No keys detected"
           else
             TITLE="⚠️  **Crypto Keys Found!**"
-            COLOR="16753920"  # Orange
+            COLOR="16753920"
             STATUS="🟠 Found $TOTAL_KEYS_FOUND keys"
           fi
           
@@ -126,8 +128,6 @@ jobs:
             ⚠️  Total Keys: ${{ env.TOTAL_KEYS_FOUND }}
             ⏱️ Time: ${{ env.TIME_READABLE }}
             📋 Status: ${{ env.STATUS }}
-            
-            💡 Scan completed at: $(date +"%Y-%m-%d %H:%M:%S")
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 

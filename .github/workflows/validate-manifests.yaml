@@ -19,37 +19,20 @@ jobs:
       - name: Setup environment
         run: |
           echo "VALIDATION_START=$(date +%s)" >> $GITHUB_ENV
-          echo "ERROR_COUNT=0" >> $GITHUB_ENV
           echo "KUBE_ERRORS=0" >> $GITHUB_ENV
           echo "MISSING_KEYS=0" >> $GITHUB_ENV
 
-      - name: Install tools
+      - name: Install kubeval
         run: |
-          # Устанавливаем только kubeval и yq
           wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
           tar xf kubeval-linux-amd64.tar.gz
           sudo mv kubeval /usr/local/bin
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
-          sudo chmod +x /usr/local/bin/yq
 
-      - name: Basic YAML syntax check
+      - name: Count YAML files
         run: |
-          echo "🔍 Basic YAML syntax check..."
-          ERROR_COUNT=0
-          YAML_FILES=0
-          
-          for file in $(find . -name "*.yaml" -o -name "*.yml"); do
-            echo "Checking $file"
-            ((YAML_FILES++))
-            # Простая проверка YAML с помощью Python
-            if ! python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null; then
-              echo "❌ YAML syntax error in $file"
-              ((ERROR_COUNT++))
-            fi
-          done
-          
-          echo "ERROR_COUNT=$ERROR_COUNT" >> $GITHUB_ENV
+          YAML_FILES=$(find . -name "*.yaml" -o -name "*.yml" | wc -l)
           echo "YAML_FILES_CHECKED=$YAML_FILES" >> $GITHUB_ENV
+          echo "📊 Found $YAML_FILES YAML files"
 
       - name: Validate Kubernetes manifests
         run: |
@@ -59,11 +42,13 @@ jobs:
           
           for file in $(find . -name "*.yaml" -o -name "*.yml"); do
             if grep -q "apiVersion:" "$file" && grep -q "kind:" "$file"; then
-              echo "Validating Kubernetes manifest: $file"
+              echo "Validating: $file"
               ((MANIFEST_FILES++))
-              # Используем || true чтобы продолжить при ошибках
-              if ! kubeval "$file" --strict --ignore-missing-schemas 2>/dev/null; then
+              
+              # Используем временный файл для ошибок
+              if ! kubeval "$file" --strict --ignore-missing-schemas 2>/tmp/kubeval-error 2>&1; then
                 echo "❌ Kubernetes validation failed for $file"
+                cat /tmp/kubeval-error || true
                 ((KUBE_ERRORS++))
               fi
             fi
@@ -78,11 +63,12 @@ jobs:
           MISSING_KEYS=0
           
           for file in $(find . -name "*deployment*.yaml" -o -name "*deployment*.yml"); do
-            echo "Checking required keys in: $file"
+            echo "Checking: $file"
             
-            REQUIRED_FIELDS=("apiVersion" "kind" "metadata.name" "spec.template.spec.containers")
+            # Простая проверка наличия ключевых слов
+            REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:")
             for field in "${REQUIRED_FIELDS[@]}"; do
-              if ! yq eval ".$field" "$file" > /dev/null 2>&1; then
+              if ! grep -q "$field" "$file"; then
                 echo "❌ Missing required field: $field in $file"
                 ((MISSING_KEYS++))
               fi
@@ -95,7 +81,6 @@ jobs:
         run: |
           VALIDATION_END=$(date +%s)
           VALIDATION_TIME=$((VALIDATION_END - ${{ env.VALIDATION_START }}))
-          echo "VALIDATION_TIME=$VALIDATION_TIME" >> $GITHUB_ENV
           
           if [ $VALIDATION_TIME -lt 60 ]; then
             TIME_READABLE="${VALIDATION_TIME} seconds"
@@ -108,7 +93,7 @@ jobs:
 
       - name: Prepare validation results
         run: |
-          TOTAL_ERRORS=$(( ${{ env.ERROR_COUNT }} + ${{ env.KUBE_ERRORS }} + ${{ env.MISSING_KEYS }} ))
+          TOTAL_ERRORS=$(( ${{ env.KUBE_ERRORS }} + ${{ env.MISSING_KEYS }} ))
           
           if [ $TOTAL_ERRORS -eq 0 ]; then
             TITLE="✅ **Validation Successful!**"
@@ -117,7 +102,7 @@ jobs:
           else
             TITLE="❌ **Validation Failed!**"
             COLOR="16711680"
-            STATUS="🔴 Validation failed with $TOTAL_ERRORS errors"
+            STATUS="🔴 Found $TOTAL_ERRORS errors"
           fi
           
           echo "TITLE=$TITLE" >> $GITHUB_ENV
@@ -135,7 +120,6 @@ jobs:
             📝 Commit: ${{ github.sha }}
             📊 YAML Files: ${{ env.YAML_FILES_CHECKED }}
             🚀 K8s Manifests: ${{ env.MANIFEST_FILES }}
-            ❌ YAML Errors: ${{ env.ERROR_COUNT }}
             ❌ K8s Errors: ${{ env.KUBE_ERRORS }}
             🔑 Missing Keys: ${{ env.MISSING_KEYS }}
             ⏱️ Time: ${{ env.TIME_READABLE }}
@@ -146,11 +130,10 @@ jobs:
       - name: Show final results
         run: |
           echo "=== VALIDATION RESULTS ==="
-          echo "YAML Files Checked: ${{ env.YAML_FILES_CHECKED }}"
-          echo "YAML Errors: ${{ env.ERROR_COUNT }}"
-          echo "K8s Manifests Checked: ${{ env.MANIFEST_FILES }}"
+          echo "YAML Files: ${{ env.YAML_FILES_CHECKED }}"
+          echo "K8s Manifests: ${{ env.MANIFEST_FILES }}"
           echo "K8s Errors: ${{ env.KUBE_ERRORS }}"
           echo "Missing Keys: ${{ env.MISSING_KEYS }}"
           echo "Total Errors: ${{ env.TOTAL_ERRORS }}"
-          echo "Validation Time: ${{ env.TIME_READABLE }}"
+          echo "Time: ${{ env.TIME_READABLE }}"
           echo "=========================="

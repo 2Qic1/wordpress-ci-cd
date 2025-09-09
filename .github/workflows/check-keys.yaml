@@ -1,4 +1,4 @@
-name: Check Required Keys
+name: Check for Crypto Keys
 
 on:
   pull_request:
@@ -19,44 +19,65 @@ jobs:
       - name: Start check
         run: |
           echo "CHECK_START=$(date +%s)" >> $GITHUB_ENV
-          echo "MISSING_KEYS=0" >> $GITHUB_ENV
+          echo "PRIVATE_KEYS_FOUND=0" >> $GITHUB_ENV
+          echo "PUBLIC_KEYS_FOUND=0" >> $GITHUB_ENV
           echo "FILES_CHECKED=0" >> $GITHUB_ENV
 
-      - name: Check for required keys
+      - name: Check for private keys
         run: |
-          echo "🔍 Checking for required keys in YAML files..."
+          echo "🔍 Checking for PRIVATE keys..."
           
-          # Проверяем deployment файлы
-          for file in $(find . -name "*deployment*.yaml" -o -name "*deployment*.yml"); do
-            echo "Checking: $file"
-            FILES_CHECKED=$((FILES_CHECKED + 1))
-            
-            # Проверяем обязательные поля с помощью grep (игнорируем ошибки)
-            REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:" "containers:")
-            for field in "${REQUIRED_FIELDS[@]}"; do
-              if ! grep -q "$field" "$file" 2>/dev/null || true; then
-                echo "❌ Missing required field: $field in $file"
-                MISSING_KEYS=$((MISSING_KEYS + 1))
-              fi
-            done
+          # Паттерны для поиска приватных ключей
+          PRIVATE_KEY_PATTERNS=(
+            "-----BEGIN PRIVATE KEY-----"
+            "-----BEGIN RSA PRIVATE KEY-----"
+            "-----BEGIN EC PRIVATE KEY-----"
+            "-----BEGIN OPENSSH PRIVATE KEY-----"
+            "-----BEGIN PGP PRIVATE KEY BLOCK-----"
+          )
+          
+          for file in $(find . -type f -not -path "./.git/*"); do
+            if [ -f "$file" ]; then
+              ((FILES_CHECKED++))
+              
+              for pattern in "${PRIVATE_KEY_PATTERNS[@]}"; do
+                if grep -q "$pattern" "$file" 2>/dev/null; then
+                  echo "⚠️  FOUND PRIVATE KEY in: $file"
+                  echo "   Pattern: $pattern"
+                  PRIVATE_KEYS_FOUND=$((PRIVATE_KEYS_FOUND + 1))
+                fi
+              done
+            fi
           done
           
-          # Проверяем service файлы
-          for file in $(find . -name "*service*.yaml" -o -name "*service*.yml"); do
-            echo "Checking: $file"
-            FILES_CHECKED=$((FILES_CHECKED + 1))
-            
-            REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:" "ports:")
-            for field in "${REQUIRED_FIELDS[@]}"; do
-              if ! grep -q "$field" "$file" 2>/dev/null || true; then
-                echo "❌ Missing required field: $field in $file"
-                MISSING_KEYS=$((MISSING_KEYS + 1))
-              fi
-            done
+          echo "PRIVATE_KEYS_FOUND=$PRIVATE_KEYS_FOUND" >> $GITHUB_ENV
+
+      - name: Check for public keys
+        run: |
+          echo "🔍 Checking for PUBLIC keys..."
+          
+          # Паттерны для поиска публичных ключей
+          PUBLIC_KEY_PATTERNS=(
+            "-----BEGIN PUBLIC KEY-----"
+            "ssh-rsa AAAAB3"
+            "ssh-ed25519 AAAAC3"
+            "ssh-dss AAAAB3"
+            "-----BEGIN PGP PUBLIC KEY BLOCK-----"
+          )
+          
+          for file in $(find . -type f -not -path "./.git/*"); do
+            if [ -f "$file" ]; then
+              for pattern in "${PUBLIC_KEY_PATTERNS[@]}"; do
+                if grep -q "$pattern" "$file" 2>/dev/null; then
+                  echo "🔑 FOUND PUBLIC KEY in: $file"
+                  echo "   Pattern: $pattern"
+                  PUBLIC_KEYS_FOUND=$((PUBLIC_KEYS_FOUND + 1))
+                fi
+              done
+            fi
           done
           
-          echo "MISSING_KEYS=$MISSING_KEYS" >> $GITHUB_ENV
-          echo "FILES_CHECKED=$FILES_CHECKED" >> $GITHUB_ENV
+          echo "PUBLIC_KEYS_FOUND=$PUBLIC_KEYS_FOUND" >> $GITHUB_ENV
 
       - name: Calculate check time
         run: |
@@ -74,19 +95,22 @@ jobs:
 
       - name: Prepare results
         run: |
-          if [ ${{ env.MISSING_KEYS }} -eq 0 ]; then
-            TITLE="✅ **All Required Keys Found!**"
+          TOTAL_KEYS_FOUND=$(( ${{ env.PRIVATE_KEYS_FOUND }} + ${{ env.PUBLIC_KEYS_FOUND }} ))
+          
+          if [ $TOTAL_KEYS_FOUND -eq 0 ]; then
+            TITLE="✅ **No Crypto Keys Found**"
             COLOR="5814783"
-            STATUS="🟢 Success"
+            STATUS="🟢 No keys detected"
           else
-            TITLE="❌ **Missing Required Keys!**"
-            COLOR="16711680"
-            STATUS="🔴 Found ${{ env.MISSING_KEYS }} missing keys"
+            TITLE="⚠️  **Crypto Keys Found!**"
+            COLOR="16753920"  # Orange
+            STATUS="🟠 Found $TOTAL_KEYS_FOUND keys"
           fi
           
           echo "TITLE=$TITLE" >> $GITHUB_ENV
           echo "COLOR=$COLOR" >> $GITHUB_ENV
           echo "STATUS=$STATUS" >> $GITHUB_ENV
+          echo "TOTAL_KEYS_FOUND=$TOTAL_KEYS_FOUND" >> $GITHUB_ENV
 
       - name: Send results to Discord
         uses: Ilshidur/action-discord@0.3.2
@@ -97,17 +121,23 @@ jobs:
             🔀 Branch: ${{ github.ref_name }}
             📝 Commit: ${{ github.sha }}
             📊 Files Checked: ${{ env.FILES_CHECKED }}
-            ❌ Missing Keys: ${{ env.MISSING_KEYS }}
+            🔒 Private Keys: ${{ env.PRIVATE_KEYS_FOUND }}
+            🔑 Public Keys: ${{ env.PUBLIC_KEYS_FOUND }}
+            ⚠️  Total Keys: ${{ env.TOTAL_KEYS_FOUND }}
             ⏱️ Time: ${{ env.TIME_READABLE }}
             📋 Status: ${{ env.STATUS }}
+            
+            💡 Scan completed at: $(date +"%Y-%m-%d %H:%M:%S")
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
       - name: Show final results
         run: |
-          echo "=== KEY CHECK RESULTS ==="
+          echo "=== CRYPTO KEYS SCAN RESULTS ==="
           echo "Files Checked: ${{ env.FILES_CHECKED }}"
-          echo "Missing Keys: ${{ env.MISSING_KEYS }}"
-          echo "Check Time: ${{ env.TIME_READABLE }}"
+          echo "Private Keys Found: ${{ env.PRIVATE_KEYS_FOUND }}"
+          echo "Public Keys Found: ${{ env.PUBLIC_KEYS_FOUND }}"
+          echo "Total Keys Found: ${{ env.TOTAL_KEYS_FOUND }}"
+          echo "Scan Time: ${{ env.TIME_READABLE }}"
           echo "Status: ${{ env.STATUS }}"
-          echo "========================="
+          echo "================================"

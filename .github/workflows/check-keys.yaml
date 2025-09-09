@@ -29,14 +29,14 @@ jobs:
           # Проверяем deployment файлы
           for file in $(find . -name "*deployment*.yaml" -o -name "*deployment*.yml"); do
             echo "Checking: $file"
-            ((FILES_CHECKED++))
+            FILES_CHECKED=$((FILES_CHECKED + 1))
             
-            # Проверяем обязательные поля с помощью grep
+            # Проверяем обязательные поля с помощью grep (игнорируем ошибки)
             REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:" "containers:")
             for field in "${REQUIRED_FIELDS[@]}"; do
-              if ! grep -q "$field" "$file"; then
+              if ! grep -q "$field" "$file" 2>/dev/null || true; then
                 echo "❌ Missing required field: $field in $file"
-                ((MISSING_KEYS++))
+                MISSING_KEYS=$((MISSING_KEYS + 1))
               fi
             done
           done
@@ -44,13 +44,13 @@ jobs:
           # Проверяем service файлы
           for file in $(find . -name "*service*.yaml" -o -name "*service*.yml"); do
             echo "Checking: $file"
-            ((FILES_CHECKED++))
+            FILES_CHECKED=$((FILES_CHECKED + 1))
             
             REQUIRED_FIELDS=("apiVersion:" "kind:" "metadata:" "spec:" "ports:")
             for field in "${REQUIRED_FIELDS[@]}"; do
-              if ! grep -q "$field" "$file"; then
+              if ! grep -q "$field" "$file" 2>/dev/null || true; then
                 echo "❌ Missing required field: $field in $file"
-                ((MISSING_KEYS++))
+                MISSING_KEYS=$((MISSING_KEYS + 1))
               fi
             done
           done
@@ -100,8 +100,6 @@ jobs:
             ❌ Missing Keys: ${{ env.MISSING_KEYS }}
             ⏱️ Time: ${{ env.TIME_READABLE }}
             📋 Status: ${{ env.STATUS }}
-            
-            🔍 Check completed at: $(date +"%Y-%m-%d %H:%M:%S")
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 

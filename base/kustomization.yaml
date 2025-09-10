@@ -6,3 +6,4 @@ resources:
 - mariadb-secret.yaml
 - mariadb-pvc.yaml
 - mariadb-service.yaml
+- wordpress-custom-index.yaml

@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wordpress-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/2Qic1/wordpress-ci-cd.git
+    targetRevision: HEAD
+    path: deployment  # Указываем папку deployment для основного деплоя
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wordpress
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true

@@ -3,15 +3,11 @@ kind: Deployment
 metadata:
   name: wordpress
   namespace: wordpress
-  labels:
-    app: wordpress
-    version: "v2.0.0"
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: wordpress
-      version: "v2.0.0"
   template:
     metadata:
       labels:

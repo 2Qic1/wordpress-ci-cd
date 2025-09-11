@@ -5,4 +5,4 @@ resources:
 - ../base
 - mariadb-deployment.yaml
 - ../wordpress
-- ../deployment/wordpress-deployment-v2.yaml
+- ../deployment/wordpress-deployment-v3-broken.yaml

@@ -5,11 +5,12 @@ metadata:
   namespace: argocd
   annotations:
     notifications.argoproj.io/subscribe.on-sync-failed.discord: "true"
-    notifications.argoproj.io/subscribe.on-sync-succeeded.discord: "true" 
+    notifications.argoproj.io/subscribe.on-sync-succeeded.discord: "true"
     notifications.argoproj.io/subscribe.on-health-degraded.discord: "true"
     # ✅ КРИТИЧЕСКИЕ АННОТАЦИИ ДЛЯ АВТООТКАТА:
-    argocd.argoproj.io/auto-revert: "true"  # ⚡ ВКЛЮЧАЕМ АВТООТКАТ
-    argocd.argoproj.io/self-heal: "true"    # ⚡ САМОЛЕЧЕНИЕ
+    argocd.argoproj.io/auto-revert: "true"
+    argocd.argoproj.io/self-heal: "true"
+    argocd.argoproj.io/sync-options: "PruneLast=true"
 spec:
   project: default
   source:
@@ -24,19 +25,30 @@ spec:
       prune: true
       selfHeal: true
       allowEmpty: false
-      # ✅ ДОБАВЛЯЕМ ПОЛИТИКУ АВТООТКАТА:
-      autoRevert: true  # ⚡ АВТОМАТИЧЕСКИЙ ОТКАТ ПРИ FAILURE
+      autoRevert: true
     retry:
-      limit: 2
+      limit: 1  # ⚡ Меньше попыток для быстрого отката
       backoff:
-        duration: 30s
+        duration: 10s
         factor: 2
-        maxDuration: 2m
+        maxDuration: 30s
     syncOptions:
     - CreateNamespace=true
     - PruneLast=true
     - Validate=true
-  # ✅ ДОБАВЛЯЕМ ПОЛИТИКИ ЗДОРОВЬЯ:
+    - ApplyOutOfSyncOnly=true
+  # ✅ ПРАВИЛЬНАЯ КОНФИГУРАЦИЯ ДЛЯ ОБНАРУЖЕНИЯ СБОЯ:
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /status
   healthChecks:
-  - type: RollingUpdate
-    value: 60s  # Проверять здоровье каждые 60 секунд
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+    namespace: wordpress
+    check:
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3

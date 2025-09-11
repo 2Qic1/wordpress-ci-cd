@@ -9,13 +9,13 @@ metadata:
     argocd.argoproj.io/tracking-id: wordpress-production:apps/Deployment:wordpress/wordpress
 spec:
   replicas: 1
-  progressDeadlineSeconds: 60  # ⚡ Таймаут 1 минута для быстрого автоотката
-  minReadySeconds: 5
+  progressDeadlineSeconds: 30  # ⚡ Уменьшили таймаут для быстрого отката
+  minReadySeconds: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 1  # 🔧 Максимум 1 недоступный pod
-      maxSurge: 0        # 🔧 Не создавать дополнительные pods во время обновления
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app: wordpress
@@ -23,12 +23,14 @@ spec:
     metadata:
       labels:
         app: wordpress
+      annotations:
+        argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     spec:
-      terminationGracePeriodSeconds: 30  # ⚡ Быстрое удаление pods
+      terminationGracePeriodSeconds: 10  # ⚡ Быстрое удаление
       containers:
       - name: wordpress
         image: wordpress:php8.2-apache
-        command: ["/bin/sh", "-c", "echo 'AUTO-ROLLBACK TEST: Intentional failure'; sleep 15; exit 1"]  # 🚨 Guaranteed failure через 15 сек
+        command: ["/bin/sh", "-c", "echo 'AUTO-ROLLBACK TEST: Intentional failure'; sleep 10; exit 1"]  # 🚨 Падение через 10 сек
         ports:
         - containerPort: 80
         env:
@@ -53,16 +55,18 @@ spec:
           httpGet:
             path: /
             port: 80
-          initialDelaySeconds: 20  # ⚡ Даем время для failure
-          periodSeconds: 10
-          failureThreshold: 1
+          initialDelaySeconds: 3  # ⚡ Быстрая проверка
+          periodSeconds: 2
+          failureThreshold: 2
+          timeoutSeconds: 1
         readinessProbe:
           httpGet:
             path: /
             port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          failureThreshold: 1
+          initialDelaySeconds: 2
+          periodSeconds: 2
+          failureThreshold: 2
+          timeoutSeconds: 1
         resources:
           requests:
             memory: "512Mi"

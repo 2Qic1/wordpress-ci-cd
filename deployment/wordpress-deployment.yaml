@@ -3,8 +3,11 @@ kind: Deployment
 metadata:
   name: wordpress
   namespace: wordpress
+  labels:
+    app: wordpress
 spec:
   replicas: 1
+  progressDeadlineSeconds: 60  # ⚡ Ключ для автоотката!
   selector:
     matchLabels:
       app: wordpress
@@ -12,51 +15,17 @@ spec:
     metadata:
       labels:
         app: wordpress
-        version: "v2.0.0"
     spec:
       containers:
       - name: wordpress
-        image: wordpress:php8.2-apache
-        env:
-        - name: WORDPRESS_DB_HOST
-          value: mariadb:3306
-        - name: WORDPRESS_DB_NAME
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret
-              key: database
-        - name: WORDPRESS_DB_USER
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret
-              key: username
-        - name: WORDPRESS_DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret
-              key: password
+        image: wordpress:php8.2-apache  # ✅ Образ правильный НО...
+        command: ["/bin/sh", "-c", "exit 1"]  # 🚨 100% failure!
         ports:
         - containerPort: 80
         volumeMounts:
         - name: wordpress-storage
           mountPath: /var/www/html
-        - name: custom-index
-          mountPath: /var/www/html/index.php
-          subPath: index.php
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "500m"
       volumes:
       - name: wordpress-storage
         persistentVolumeClaim:
           claimName: wordpress-pvc
-      - name: custom-index
-        configMap:
-          name: wordpress-custom-index
-          items:
-          - key: index.php
-            path: index.php

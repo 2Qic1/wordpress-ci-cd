@@ -8,24 +8,15 @@ spec:
   selector:
     matchLabels:
       app: wordpress
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
-  minReadySeconds: 5
-  progressDeadlineSeconds: 120  # ⏱️ Таймаут 2 минуты для быстрого отката
   template:
     metadata:
       labels:
         app: wordpress
-        version: "v3.0.0-broken"
+        version: "v2.0.0"
     spec:
       containers:
       - name: wordpress
-        image: nonexistent-image:this-will-fail  # 🚨 НЕСУЩЕСТВУЮЩИЙ ОБРАЗ
-        ports:
-        - containerPort: 80
+        image: wordpress:php8.2-apache
         env:
         - name: WORDPRESS_DB_HOST
           value: mariadb:3306
@@ -44,18 +35,14 @@ spec:
             secretKeyRef:
               name: mariadb-secret
               key: password
-        livenessProbe:  # ✅ ДОБАВЛЕНО
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 15
-          periodSeconds: 10
-        readinessProbe:  # ✅ ДОБАВЛЕНО
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+        - name: custom-index
+          mountPath: /var/www/html/index.php
+          subPath: index.php
         resources:
           requests:
             memory: "512Mi"
@@ -63,10 +50,13 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "500m"
-        volumeMounts:
-        - name: wordpress-storage
-          mountPath: /var/www/html
       volumes:
       - name: wordpress-storage
         persistentVolumeClaim:
           claimName: wordpress-pvc
+      - name: custom-index
+        configMap:
+          name: wordpress-custom-index
+          items:
+          - key: index.php
+            path: index.php

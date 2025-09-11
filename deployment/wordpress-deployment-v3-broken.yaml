@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+  labels:
+    app: wordpress
+  annotations:
+    argocd.argoproj.io/tracking-id: wordpress-production:apps/Deployment:wordpress/wordpress
+    # ✅ ДОБАВЛЯЕМ ДЛЯ ОБНАРУЖЕНИЯ СБОЯ:
+    argocd.argoproj.io/hook: PreSync
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 15  # ⚡ ОЧЕНЬ короткий таймаут
+  minReadySeconds: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      terminationGracePeriodSeconds: 5  # ⚡ Очень быстрое удаление
+      containers:
+      - name: wordpress
+        image: wordpress:php8.2-apache
+        command: ["/bin/sh", "-c", "echo 'AUTO-ROLLBACK TEST: Intentional failure'; sleep 5; exit 1"]  # 🚨 Падение через 5 сек
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mariadb:3306
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: database
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: password
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 2
+          periodSeconds: 1
+          failureThreshold: 1
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 1
+          periodSeconds: 1
+          failureThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+        - name: custom-index
+          mountPath: /var/www/html/index.php
+          subPath: index.php
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc
+      - name: custom-index
+        configMap:
+          name: wordpress-custom-index
+          items:
+          - key: index.php
+            path: index.php

@@ -7,10 +7,10 @@ metadata:
     notifications.argoproj.io/subscribe.on-sync-failed.discord: "true"
     notifications.argoproj.io/subscribe.on-sync-succeeded.discord: "true"
     notifications.argoproj.io/subscribe.on-health-degraded.discord: "true"
-    # ✅ КРИТИЧЕСКИЕ АННОТАЦИИ ДЛЯ АВТООТКАТА:
     argocd.argoproj.io/auto-revert: "true"
     argocd.argoproj.io/self-heal: "true"
-    argocd.argoproj.io/sync-options: "PruneLast=true"
+    # ✅ ДОБАВЛЯЕМ КРИТИЧЕСКУЮ АННОТАЦИЮ:
+    argocd.argoproj.io/hook: PreSync,PostSync
 spec:
   project: default
   source:
@@ -27,28 +27,17 @@ spec:
       allowEmpty: false
       autoRevert: true
     retry:
-      limit: 1  # ⚡ Меньше попыток для быстрого отката
-      backoff:
-        duration: 10s
-        factor: 2
-        maxDuration: 30s
+      limit: 0  # ⚡ БЕЗ повторных попыток для быстрого отката
     syncOptions:
     - CreateNamespace=true
     - PruneLast=true
     - Validate=true
     - ApplyOutOfSyncOnly=true
-  # ✅ ПРАВИЛЬНАЯ КОНФИГУРАЦИЯ ДЛЯ ОБНАРУЖЕНИЯ СБОЯ:
-  ignoreDifferences:
-  - group: apps
-    kind: Deployment
-    jsonPointers:
-    - /status
+    # ✅ КРИТИЧЕСКИЙ ПАРАМЕТР:
+    - FailOnSyncFail=true
+  # ✅ УДАЛЯЕМ ignoreDifferences - нужно видеть статус!
   healthChecks:
   - apiVersion: apps/v1
     kind: Deployment
     name: wordpress
     namespace: wordpress
-    check:
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3

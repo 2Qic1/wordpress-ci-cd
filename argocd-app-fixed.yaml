@@ -5,11 +5,9 @@ metadata:
   namespace: argocd
   annotations:
     notifications.argoproj.io/subscribe.on-sync-failed.discord: "true"
-    notifications.argoproj.io/subscribe.on-sync-succeeded.discord: "true" 
+    notifications.argoproj.io/subscribe.on-sync-succeeded.discord: "true"
     notifications.argoproj.io/subscribe.on-health-degraded.discord: "true"
-    # ✅ КРИТИЧЕСКИЕ АННОТАЦИИ ДЛЯ АВТООТКАТА:
-    argocd.argoproj.io/auto-revert: "true"  # ⚡ ВКЛЮЧАЕМ АВТООТКАТ
-    argocd.argoproj.io/self-heal: "true"    # ⚡ САМОЛЕЧЕНИЕ
+    argocd.argoproj.io/refresh: "10s"
 spec:
   project: default
   source:
@@ -24,8 +22,6 @@ spec:
       prune: true
       selfHeal: true
       allowEmpty: false
-      # ✅ ДОБАВЛЯЕМ ПОЛИТИКУ АВТООТКАТА:
-      autoRevert: true  # ⚡ АВТОМАТИЧЕСКИЙ ОТКАТ ПРИ FAILURE
     retry:
       limit: 2
       backoff:
@@ -36,7 +32,3 @@ spec:
     - CreateNamespace=true
     - PruneLast=true
     - Validate=true
-  # ✅ ДОБАВЛЯЕМ ПОЛИТИКИ ЗДОРОВЬЯ:
-  healthChecks:
-  - type: RollingUpdate
-    value: 60s  # Проверять здоровье каждые 60 секунд

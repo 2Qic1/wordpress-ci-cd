@@ -5,9 +5,17 @@ metadata:
   namespace: wordpress
   labels:
     app: wordpress
+  annotations:
+    argocd.argoproj.io/tracking-id: wordpress-production:apps/Deployment:wordpress/wordpress
 spec:
   replicas: 1
-  progressDeadlineSeconds: 60  # ⚡ Ключ для автоотката!
+  progressDeadlineSeconds: 60  # ⚡ Таймаут 1 минута для быстрого автоотката
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1  # 🔧 Максимум 1 недоступный pod
+      maxSurge: 0        # 🔧 Не создавать дополнительные pods во время обновления
   selector:
     matchLabels:
       app: wordpress
@@ -16,16 +24,65 @@ spec:
       labels:
         app: wordpress
     spec:
+      terminationGracePeriodSeconds: 30  # ⚡ Быстрое удаление pods
       containers:
       - name: wordpress
-        image: wordpress:php8.2-apache  # ✅ Образ правильный НО...
-        command: ["/bin/sh", "-c", "exit 1"]  # 🚨 100% failure!
+        image: wordpress:php8.2-apache
+        command: ["/bin/sh", "-c", "echo 'AUTO-ROLLBACK TEST: Intentional failure'; sleep 15; exit 1"]  # 🚨 Guaranteed failure через 15 сек
         ports:
         - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mariadb:3306
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: database
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: username
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: password
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 20  # ⚡ Даем время для failure
+          periodSeconds: 10
+          failureThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 1
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
         volumeMounts:
         - name: wordpress-storage
           mountPath: /var/www/html
+        - name: custom-index
+          mountPath: /var/www/html/index.php
+          subPath: index.php
       volumes:
       - name: wordpress-storage
         persistentVolumeClaim:
           claimName: wordpress-pvc
+      - name: custom-index
+        configMap:
+          name: wordpress-custom-index
+          items:
+          - key: index.php
+            path: index.php

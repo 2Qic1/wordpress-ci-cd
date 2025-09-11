@@ -12,7 +12,7 @@ spec:
     metadata:
       labels:
         app: wordpress
-        version: "v3.0.0-broken"
+        version: "v2.0.0"
     spec:
       containers:
       - name: wordpress
@@ -35,32 +35,14 @@ spec:
             secretKeyRef:
               name: mariadb-secret
               key: password
-        # НЕРАБОЧИЕ НАСТРОЙКИ:
-        - name: WORDPRESS_DEBUG
-          value: "true"  # Включаем debug mode
-        - name: WORDPRESS_CONFIG_EXTRA
-          value: |
-            define('WP_HOME', 'http://wrong-url-that-does-not-exist.k8s-3.sa');
-            define('WP_SITEURL', 'http://wrong-url-that-does-not-exist.k8s-3.sa');
         ports:
         - containerPort: 80
-        # Ломаем readiness probe:
-        readinessProbe:
-          httpGet:
-            path: /nonexistent-page-that-will-fail
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          failureThreshold: 2
-        livenessProbe:
-          httpGet:
-            path: /nonexistent-page-that-will-fail  
-            port: 80
-          initialDelaySeconds: 15
-          periodSeconds: 10
         volumeMounts:
         - name: wordpress-storage
           mountPath: /var/www/html
+        - name: custom-index
+          mountPath: /var/www/html/index.php
+          subPath: index.php
         resources:
           requests:
             memory: "512Mi"
@@ -72,3 +54,9 @@ spec:
       - name: wordpress-storage
         persistentVolumeClaim:
           claimName: wordpress-pvc
+      - name: custom-index
+        configMap:
+          name: wordpress-custom-index
+          items:
+          - key: index.php
+            path: index.php

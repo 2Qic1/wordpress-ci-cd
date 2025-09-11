@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  service.discord: |
+    - name: discord
+      url: https://discordapp.com/api/webhooks/1409577998444793856/TAduFB3cR-Ip3CxquarZbn99cvKUKTuJFonE8kVxosxbUTtFZVTF-haqyPw8GPZkANmG
+      send: [message]
+  
+  trigger.on-sync-failed: |
+    - description: Application sync has failed
+      oncePer: 10m
+      send: [discord]
+      when: app.status.operationState.phase in ['Failed', 'Error']
+  
+  trigger.on-sync-succeeded: |
+    - description: Application sync succeeded
+      oncePer: 10m
+      send: [discord]
+      when: app.status.operationState.phase == 'Succeeded'
+  
+  trigger.on-health-degraded: |
+    - description: Application health degraded
+      oncePer: 10m
+      send: [discord]
+      when: app.status.health.status == 'Degraded'
+  
+  template.message: |
+    discord:
+      username: ArgoCD Bot
+      avatar_url: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
+      embeds:
+      - title: "{{if eq .app.status.operationState.phase \"Succeeded\"}}✅ DEPLOYMENT SUCCESS{{else if eq .app.status.operationState.phase \"Failed\"}}🚨 DEPLOYMENT FAILED{{else}}⚠️  APPLICATION DEGRADED{{end}}"
+        color: "{{if eq .app.status.operationState.phase \"Succeeded\"}}65280{{else if eq .app.status.operationState.phase \"Failed\"}}16711680{{else}}16776960{{end}}"
+        fields:
+        - name: Application
+          value: "{{.app.metadata.name}}"
+          inline: true
+        - name: Namespace
+          value: "{{.app.spec.destination.namespace}}"
+          inline: true
+        - name: Status
+          value: "{{.app.status.operationState.phase}}"
+          inline: true
+        - name: Message
+          value: "{{.app.status.operationState.message}}"
+        - name: Time
+          value: "{{.app.status.operationState.finishedAt}}"
+        footer:
+          text: "ArgoCD Notification System"

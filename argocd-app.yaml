@@ -15,7 +15,7 @@ spec:
     path: deployment
   destination:
     server: https://kubernetes.default.svc
-    namespace: wordpress-production
+    namespace: wordpress
   syncPolicy:
     automated:
       prune: true

@@ -3,37 +3,23 @@ kind: Deployment
 metadata:
   name: wordpress
   namespace: wordpress
-  labels:
-    app: wordpress
-    version: "v3.0.0-broken"
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: wordpress
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
-  minReadySeconds: 5
-  progressDeadlineSeconds: 60  # ⚡ Быстрый таймаут 1 минута!
   template:
     metadata:
       labels:
         app: wordpress
-        version: "v3.0.0-broken"
+        version: "v2.0.0"
     spec:
       containers:
       - name: wordpress
-        image: wordpress:php8.2-apache  # ✅ Правильный образ НО...
-        command: ["/bin/sh", "-c"]  # 🚨 Guaranteed failure!
-        args: ["echo 'Intentional failure for auto-rollback test'; exit 1"]
-        ports:
-        - containerPort: 80
+        image: wordpress:php8.2-apache
         env:
         - name: WORDPRESS_DB_HOST
-          value: "nonexistent-mysql:9999"  # 🚨 Несуществующий хост
+          value: mariadb:3306
         - name: WORDPRESS_DB_NAME
           valueFrom:
             secretKeyRef:
@@ -49,18 +35,14 @@ spec:
             secretKeyRef:
               name: mariadb-secret
               key: password
-        livenessProbe:
-          httpGet:
-            path: /nonexistent-page  # 🚨 Несуществующий путь
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 3
-        readinessProbe:
-          httpGet:
-            path: /nonexistent-page  # 🚨 Несуществующий путь
-            port: 80
-          initialDelaySeconds: 2
-          periodSeconds: 2
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+        - name: custom-index
+          mountPath: /var/www/html/index.php
+          subPath: index.php
         resources:
           requests:
             memory: "512Mi"
@@ -68,10 +50,13 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "500m"
-        volumeMounts:
-        - name: wordpress-storage
-          mountPath: /var/www/html
       volumes:
       - name: wordpress-storage
         persistentVolumeClaim:
           claimName: wordpress-pvc
+      - name: custom-index
+        configMap:
+          name: wordpress-custom-index
+          items:
+          - key: index.php
+            path: index.php

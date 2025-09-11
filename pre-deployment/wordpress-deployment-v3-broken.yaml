@@ -3,9 +3,6 @@ kind: Deployment
 metadata:
   name: wordpress
   namespace: wordpress
-  labels:
-    app: wordpress
-    argocd.argoproj.io/tracking-id: wordpress-production:apps/Deployment:wordpress-production/wordpress
 spec:
   replicas: 1
   selector:
@@ -16,40 +13,22 @@ spec:
     rollingUpdate:
       maxUnavailable: 1
       maxSurge: 1
-  minReadySeconds: 0
-  progressDeadlineSeconds: 60  # ⚡ Быстрый таймаут для теста (1 минута!)
+  minReadySeconds: 5
+  progressDeadlineSeconds: 120  # ⏱️ Таймаут 2 минуты для быстрого отката
   template:
     metadata:
       labels:
         app: wordpress
+        version: "v3.0.0-broken"
     spec:
       containers:
       - name: wordpress
-        image: nonexistent-image:this-image-will-never-exist  # 🚨 СЛОМАННЫЙ ОБРАЗ
+        image: nonexistent-image:this-will-fail  # 🚨 НЕСУЩЕСТВУЮЩИЙ ОБРАЗ
         ports:
         - containerPort: 80
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 3
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 2
-          periodSeconds: 2
         env:
         - name: WORDPRESS_DB_HOST
-          value: "mariadb"
+          value: mariadb:3306
         - name: WORDPRESS_DB_NAME
           valueFrom:
             secretKeyRef:
@@ -65,3 +44,29 @@ spec:
             secretKeyRef:
               name: mariadb-secret
               key: password
+        livenessProbe:  # ✅ ДОБАВЛЕНО
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:  # ✅ ДОБАВЛЕНО
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: wordpress-storage
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-storage
+        persistentVolumeClaim:
+          claimName: wordpress-pvc

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-metrics
+  namespace: wordpress
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
+    prometheus.io/path: "/"
+  labels:
+    app: wordpress
+    monitoring: "true"
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: ClusterIP
